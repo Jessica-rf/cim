@@ -1,0 +1,31 @@
+name: Python CI
+
+on:
+  push:
+    branches:
+      - main # 监听 main 分支上的推送事件
+  pull_request:
+    branches:
+      - main # 在 PR 合并到 main 时触发
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # 使用最新的 Ubuntu 环境
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3 # 检出代码仓库
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11" # 指定 Python 版本
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # 安装依赖
+
+      - name: Run tests
+        run: |
+          pytest  # 执行测试工具，默认查找 `tests/` 目录下的测试文件
