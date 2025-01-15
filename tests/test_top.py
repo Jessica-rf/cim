@@ -1,16 +1,14 @@
 import os
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-from project.top import *
+from project.main import *
 
 
-def test_top_martic_mult():
+def martix_mult_test():
     '''
     矩阵乘法 (a,b)*(b,c)
 
     martix_mult(a, b, c)
-    !!! a*c < 4096 否则会溢出 !!!
-    !!! a*c < 4096 否则会溢出 !!!
     !!! a*c < 4096 否则会溢出 !!!
     args:
         a (int): 矩阵 a 的行数
@@ -27,7 +25,15 @@ def test_top_martic_mult():
     assert martix_mult(7, 70, 7) == 0
 
     # a > 4, b < 64, c > 4
-    # assert martix_mult(11, 25, 6) == 0
+    assert martix_mult(11, 25, 6) == 0
 
     # a > 4, b > 64, c > 4
-    # assert martix_mult(16, 90, 23) == 0
+    assert martix_mult(16, 90, 23) == 0
+
+    for i in range(1000):
+        a, b, c = generate_random_numbers()
+        assert martix_mult(a, b, c) == 0
+
+def test_main():
+    martix_mult_test()
+

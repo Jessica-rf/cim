@@ -746,76 +746,126 @@ def model_infer_hw_sim(image,model):
 Below subroutines demostrate matrix mult A·B 
 If use GNN mode, each 64/16 rows of B matrix is compressed into 64/16 bits of mask to calcuate vector adder 
 '''
+def trans_matrix_to_vector(UNIT,VSEG,d):
+    a, b = d.shape
+    VECTOR = UNIT*VSEG
+    padding = (UNIT - (b % UNIT)) % UNIT
+    padded_zero = np.zeros((a, padding),dtype=np.int32)
+    d_pad1 = np.concatenate((d, padded_zero),axis=1)
+    pad_size = (VECTOR - (d_pad1.size % VECTOR)) % VECTOR
+    temp1 = d_pad1.ravel()
+    d_pad2 = np.pad(temp1, (0, pad_size), mode='constant', constant_values=0)
+    mem = d_pad2.reshape(-1,VECTOR)
+    return mem
 
-def cim_matrix_load(d1,d2):
+def cim_matrix_load(d1, d2):
     assert d1.ndim==2 and d2.ndim==2
     assert d1.shape[1]==d2.shape[0]
-    shape = d1.shape
-    
     UNIT=8 # bytes in one logic address 
     VSEG=8 # number of logic address in one vec64 
-    dtran = np.transpose(d2,(1,0))
-    if shape[1]<=4:
-        GLEN = int(UNIT/shape[1]) # number of group data in one logic address
-        CLEN = 1 # number of address for one column of data
-        CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
-        VCNT = 1 # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*shape[0]/VSEG/GLEN) # total number of vec64 for whole matrix
-        RCNT = math.ceil(shape[0]/GLEN) # number of row after grouped
-        mem0 = np.zeros((VALL,64),dtype=np.int32)
-        mem1 = np.zeros((VALL,64),dtype=np.int32)
-        for r in range(RCNT):
-            for g in range(GLEN):
-                rg = r*GLEN+g
-                if rg>shape[0]-1: continue
-                adr = r
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                seg = shape[1]
-                mem0[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = d1[rg]
-                mem1[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = dtran[rg]   
+    
+    if d1.shape[1]<=4:
+        pass
     else:
-        CLEN = math.ceil(shape[1]/UNIT) # number of address for one column of data
-        VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*shape[0]/VSEG) # total number of vec64 for whole matrix
-        VLD2 = math.ceil(CLEN*d2.shape[1]/VSEG) # total number of vec64 for d2 
-        mem0 = np.zeros((VALL,64),dtype=np.int32)
-        mem1 = np.zeros((VLD2,64),dtype=np.int32)
-        for r in range(shape[0]):
-            for v in range(VCNT):
-                adr = r*CLEN + v*VSEG
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                if shape[1] <= UNIT:
-                    seg = shape[1]
-                    mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r]
-                    mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r]
-                elif shape[1] <=UNIT*VSEG:
-                    seg = shape[1]
-                    row1 = int((adr+CLEN-1)/VSEG)
-                    if row==row1:
-                        mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r]
-                        mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r]
-                    else:
-                        mem0[row][ofs*UNIT:VSEG*UNIT] = d1[r][0:(VSEG-ofs)*UNIT]
-                        mem0[row1][0:seg-(VSEG-ofs)*UNIT] = d1[r][(VSEG-ofs)*UNIT:seg]
-                        mem1[row][ofs*UNIT:VSEG*UNIT] = dtran[r][0:(VSEG-ofs)*UNIT]
-                        mem1[row1][0:seg-(VSEG-ofs)*UNIT] = dtran[r][(VSEG-ofs)*UNIT:seg]
-                else:
-                    lst = shape[1]%(VSEG*UNIT) if shape[1]%(VSEG*UNIT)>0 else VSEG*UNIT
-                    seg = lst if v==VCNT-1 else VSEG*UNIT
-                    ads = int(seg/UNIT)-1 if int(seg/UNIT)>1 else 0
-                    row1 = int((adr+ads)/VSEG)
-                    #print(r,v,adr,ofs,row,row1,seg)
-                    if row==row1:
-                        mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r][v*64:v*64+seg]
-                        if row<VLD2 and r<d2.shape[1]: mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r][v*64:v*64+seg]
-                    else:
-                        mem0[row][ofs*UNIT:VSEG*UNIT] = d1[r][v*64:v*64+(VSEG-ofs)*UNIT]
-                        mem0[row1][0:seg-(VSEG-ofs)*UNIT] = d1[r][v*64+(VSEG-ofs)*UNIT:v*64+seg]
-                        if row<VLD2 and r<d2.shape[1]: mem1[row][ofs*UNIT:VSEG*UNIT] = dtran[r][v*64:v*64+(VSEG-ofs)*UNIT]
-                        if row1<VLD2 and r<d2.shape[1]: mem1[row1][0:seg-(VSEG-ofs)*UNIT] = dtran[r][v*64+(VSEG-ofs)*UNIT:v*64+seg]           
+        mem0 = trans_matrix_to_vector(UNIT,VSEG,d1)
+        dtran = np.transpose(d2,(1,0))
+        mem1 = trans_matrix_to_vector(UNIT,VSEG,dtran)
+
     return mem0,mem1
+    
+    
+# def cim_matrix_load_b(d1,d2):
+#     assert d1.ndim==2 and d2.ndim==2
+#     assert d1.shape[1]==d2.shape[0]
+#     shape = d1.shape
+    
+#     UNIT=8 # bytes in one logic address 
+#     VSEG=8 # number of logic address in one vec64 
+#     dtran = np.transpose(d2,(1,0))
+#     if shape[1]<=4:
+#         GLEN = int(UNIT/shape[1]) # number of group data in one logic address
+#         CLEN = 1 # number of address for one column of data
+#         CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
+#         VCNT = 1 # number of vec64 need for one column of data
+#         VALL = math.ceil(CLEN*shape[0]/VSEG/GLEN) # total number of vec64 for whole matrix
+#         RCNT = math.ceil(shape[0]/GLEN) # number of row after grouped
+#         mem0 = np.zeros((VALL,64),dtype=np.int32)
+#         mem1 = np.zeros((VALL,64),dtype=np.int32)
+#         for r in range(RCNT):
+#             for g in range(GLEN):
+#                 rg = r*GLEN+g
+#                 if rg>shape[0]-1: continue
+#                 adr = r
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 seg = shape[1]
+#                 mem0[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = d1[rg]
+#                 mem1[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = dtran[rg]   
+#     else:
+#         CLEN = math.ceil(shape[1]/UNIT) # number of address for one column of data
+#         VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
+#         VALL = math.ceil(CLEN*shape[0]/VSEG) # total number of vec64 for whole matrix
+#         VLD2 = math.ceil(CLEN*d2.shape[1]/VSEG) # total number of vec64 for d2 
+#         mem0 = np.zeros((VALL,64),dtype=np.int32)
+#         mem1 = np.zeros((VLD2,64),dtype=np.int32)
+#         for r in range(shape[0]):
+#             for v in range(VCNT):
+#                 adr = r*CLEN + v*VSEG
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 if shape[1] <= UNIT:
+#                     seg = shape[1]
+#                     mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r]
+#                 elif shape[1] <=UNIT*VSEG:
+#                     seg = shape[1]
+#                     row1 = int((adr+CLEN-1)/VSEG)
+#                     if row==row1:
+#                         mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r]
+#                     else:
+#                         mem0[row][ofs*UNIT:VSEG*UNIT] = d1[r][0:(VSEG-ofs)*UNIT]
+#                         mem0[row1][0:seg-(VSEG-ofs)*UNIT] = d1[r][(VSEG-ofs)*UNIT:seg]
+#                 else:
+#                     lst = shape[1]%(VSEG*UNIT) if shape[1]%(VSEG*UNIT)>0 else VSEG*UNIT
+#                     seg = lst if v==VCNT-1 else VSEG*UNIT
+#                     ads = int(seg/UNIT)-1 if int(seg/UNIT)>1 else 0
+#                     row1 = int((adr+ads)/VSEG)
+#                     #print(r,v,adr,ofs,row,row1,seg)
+#                     if row==row1:
+#                         temp1 = mem0[row][ofs*UNIT:ofs*UNIT+seg]
+#                         temp2 = d1[r][v*64:v*64+seg]
+#                         mem0[row][ofs*UNIT:ofs*UNIT+seg] = d1[r][v*64:v*64+seg]
+#                     else:
+#                         mem0[row][ofs*UNIT:VSEG*UNIT] = d1[r][v*64:v*64+(VSEG-ofs)*UNIT]
+#                         mem0[row1][0:seg-(VSEG-ofs)*UNIT] = d1[r][v*64+(VSEG-ofs)*UNIT:v*64+seg]
+                        
+#         for r in range(d2.shape[1]):
+#             for v in range(VCNT):
+#                 adr = r*CLEN + v*VSEG
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 if shape[1] <= UNIT:
+#                     seg = shape[1]
+#                     mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r]
+#                 elif shape[1] <=UNIT*VSEG:
+#                     seg = shape[1]
+#                     row1 = int((adr+CLEN-1)/VSEG)
+#                     if row==row1:
+#                         mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r]
+#                     else:
+#                         mem1[row][ofs*UNIT:VSEG*UNIT] = dtran[r][0:(VSEG-ofs)*UNIT]
+#                         mem1[row1][0:seg-(VSEG-ofs)*UNIT] = dtran[r][(VSEG-ofs)*UNIT:seg]
+#                 else:
+#                     lst = shape[1]%(VSEG*UNIT) if shape[1]%(VSEG*UNIT)>0 else VSEG*UNIT
+#                     seg = lst if v==VCNT-1 else VSEG*UNIT
+#                     ads = int(seg/UNIT)-1 if int(seg/UNIT)>1 else 0
+#                     row1 = int((adr+ads)/VSEG)
+#                     #print(r,v,adr,ofs,row,row1,seg)
+#                     if row==row1:
+#                         if row<VLD2 and r<d2.shape[1]: mem1[row][ofs*UNIT:ofs*UNIT+seg] = dtran[r][v*64:v*64+seg]
+#                     else:
+#                         if row<VLD2 and r<d2.shape[1]: mem1[row][ofs*UNIT:VSEG*UNIT] = dtran[r][v*64:v*64+(VSEG-ofs)*UNIT]
+#                         if row1<VLD2 and r<d2.shape[1]: mem1[row1][0:seg-(VSEG-ofs)*UNIT] = dtran[r][v*64+(VSEG-ofs)*UNIT:v*64+seg]                     
+#     return mem0,mem1
 
 def cim_matrix_mult_sim(M0,M1,S0,S1):
     UNIT=8 # bytes in one logic address 
@@ -957,6 +1007,7 @@ def cim_matrix_mult_test():
     d2 = np.arange(1755,dtype=np.int32).reshape((195,9)) % 13 - 6
     '''
     M0,M1 = cim_matrix_load(d1,d2)
+    M0_b,M1_b = cim_matrix_load_b(d1,d2)
     print_mem_hex(M0)
     print_mem_hex(M1)
     out,_ = cim_matrix_mult_sim(M0,M1,d1.shape,d2.shape)

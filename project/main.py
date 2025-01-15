@@ -1,6 +1,6 @@
 # import sys
 import os
-
+import random
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from project.cim_hw_sim import *
 from project.inst_gen import *
@@ -41,6 +41,7 @@ def write_inst_to_file(file, inst, mode="w"):
 
 
 def martix_mult(aa, bb, cc):
+    print(f"---> Cim_matrix_mult_test ({aa},{bb})*({bb},{cc})", end=',  ')
     # d1 = np.arange(aa * bb, dtype=np.int32).reshape((aa, bb))
     # d2 = np.arange(bb * cc, dtype=np.int32).reshape((bb, cc))
     d1 = np.arange(aa * bb, dtype=np.int32).reshape((aa, bb)) % 11
@@ -51,10 +52,10 @@ def martix_mult(aa, bb, cc):
     ref = d1.dot(d2)
 
     if np.array_equal(ref, out):
-        print(f"---> Cim_matrix_mult_test ({aa},{bb})*({bb},{cc}) passed")
+        print(f"passed\n")
         return 0
     else:
-        print(f"---> Cim_matrix_mult_test ({aa},{bb})*({bb},{cc}) failed\n")
+        print(f"failed\n")
         return 1
 
 
@@ -74,6 +75,7 @@ def martix_mult_with_output(aa, bb, cc):
     d2 = np.arange(bb * cc, dtype=np.int32).reshape((bb, cc)) % 13 - 6
 
     M0, M1 = cim_matrix_load(d1, d2)
+    # M0,M1 = cim_matrix_load_b(d1,d2)
 
     cnt_line += write_data_to_file(data_file_name, M0, "w")
     cnt_line += write_data_to_file(data_file_name, M1, "a")
@@ -117,6 +119,16 @@ def martix_mult_with_output(aa, bb, cc):
         # print("---> Cim_matrix_mult_test failed\n", out, "\n", ref)
         print("---> Cim_matrix_mult_test failed\n")
         return 1
+
+
+def generate_random_numbers():
+    while True:
+        a = random.randint(1, 4096)  # a can be an integer
+        b = random.randint(5, 199)  # b must be in the range (4, 200)
+        c = random.randint(1, 4096)  # c can also be an integer
+
+        if a * c < 4096:
+            return a, b, c
 
 
 if __name__ == '__main__':
