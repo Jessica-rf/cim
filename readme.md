@@ -29,6 +29,7 @@ pip install -r requirements.txt
 3. 运行测试：
    ```bash
    pytest 
+   pytest --capture=no > test_output.txt # 输出到文件
    ```
 
 ### 参数说明
