@@ -124,7 +124,7 @@ def martix_mult_with_output(aa, bb, cc):
 def generate_random_numbers():
     while True:
         a = random.randint(1, 4096)  # a can be an integer
-        b = random.randint(5, 199)  # b must be in the range (4, 200)
+        b = random.randint(1, 199)  # b must be in the range (4, 200)
         c = random.randint(1, 4096)  # c can also be an integer
 
         if a * c < 4096:
