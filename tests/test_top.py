@@ -1,5 +1,5 @@
 import os
-
+from tqdm import tqdm
 script_dir = os.path.dirname(os.path.abspath(__file__))
 from project.main import *
 
@@ -30,7 +30,7 @@ def martix_mult_test():
     # a > 4, b > 64, c > 4
     assert martix_mult(16, 90, 23) == 0
 
-    for i in range(1000):
+    for i in tqdm(range(1000), desc="martix_mult_test "):
         a, b, c = generate_random_numbers()
         assert martix_mult(a, b, c) == 0
 

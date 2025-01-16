@@ -15,7 +15,7 @@ pip install -r requirements.txt
 
 ## 使用说明
 
-### 运行项目
+### 运行项目（在cim目录下）
 1. 安装依赖：
    ```bash
    pip install -r requirements.txt
@@ -28,8 +28,9 @@ pip install -r requirements.txt
 
 3. 运行测试：
    ```bash
-   pytest 
    pytest --capture=no > test_output.txt # 输出到文件
+   #或
+   pytest #直接运行
    ```
 
 ### 参数说明
