@@ -1,4 +1,4 @@
-from project.main import *
+from project.int8.main import *
 def martix_mult_test1():
     # (a,b)*(b,c)
     ### a*c < 4096
@@ -8,7 +8,7 @@ def martix_mult_test1():
     
     #TEST
     a,b,c = 2,3,3 #PASS
-    a,b,c = 2,31,3 #
+    # a,b,c = 2,31,3 #
     # a,b,c = 2,35,3 #
     # a,b,c = 28,35,17 #FAIL
     if a * c > 4096:

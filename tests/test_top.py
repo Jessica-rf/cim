@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 script_dir = os.path.dirname(os.path.abspath(__file__))
-from project.main import *
+from project.int8.main import *
 
 
 def martix_mult_test():
