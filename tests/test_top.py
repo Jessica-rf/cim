@@ -32,10 +32,15 @@ def martix_mult_test_int8():
     # a > 4, b > 64, c > 4
     assert int8.martix_mult(16, 90, 23) == 0
 
-    for i in tqdm(range(1000), desc="martix_mult_test_int8 "):
-        a, b, c = int8.generate_random_numbers()
-        assert int8.martix_mult(a, b, c) == 0
-    
+    total_iters = 1000          # 总迭代次数
+    step = total_iters // 10    # 每10%进度更新进度条
+    with tqdm(total=total_iters, desc="martix_mult_test_int8 ", dynamic_ncols=True) as pbar:
+        for i in range(total_iters):
+            a, b, c = int8.generate_random_numbers()
+            assert int8.martix_mult(a, b, c) == 0
+            if i % step == 0:
+                pbar.update(step)
+
     print("--------martix_mult_test_int8 passed--------")
     return 
 
@@ -65,10 +70,18 @@ def martix_mult_test_fp32():
     # a > 4, b > 64, c > 4
     assert fp32.martix_mult(16, 90, 23) == 0
 
-    for i in tqdm(range(1000), desc="martix_mult_test_fp32 "):
-        a, b, c = fp32.generate_random_numbers()
-        assert fp32.martix_mult(a, b, c) == 0
-    
+    # for i in tqdm(range(1000), desc="martix_mult_test_fp32 "):
+    #     a, b, c = fp32.generate_random_numbers()
+    #     assert fp32.martix_mult(a, b, c) == 0
+    total_iters = 1000          # 总迭代次数
+    step = total_iters // 10    # 每10%进度更新进度条
+    with tqdm(total=total_iters, desc="martix_mult_test_fp32 ", dynamic_ncols=True) as pbar:
+        for i in range(total_iters):
+            a, b, c = fp32.generate_random_numbers()
+            assert fp32.martix_mult(a, b, c) == 0
+            if i % step == 0:
+                pbar.update(step)
+            
     print("--------martix_mult_test_fp32 passed--------")
     return
 def test_main():
