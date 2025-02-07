@@ -1,14 +1,16 @@
-from project.int8.main import *
+from project.fp32.main import *
 def martix_mult_test1():
     # (a,b)*(b,c)
     ### a*c < 4096
     # a,b,c = 10,90,9
-    a,b,c = 2,1000,3
+    # a,b,c = 155,180,10
     # a,b,c = 9,80,10
     
     #TEST
-    # a,b,c = 2,4,4 #PASS
-    # a,b,c = 2,31,3 #
+    # a,b,c = 2,3,3 
+    a,b,c = 1,31,1 #
+    
+    # a,b,c = 7,12,7 #
     # a,b,c = 2,35,3 #
     # a,b,c = 28,35,17 #FAIL
     if a * c > 4096:

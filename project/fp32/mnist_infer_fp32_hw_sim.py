@@ -160,7 +160,7 @@ def quantize_linear(din,scale,zero,wscale):
     return dout
                 
 def load_mnist_data():
-    file_path = "..\weight\mnist.npz" # This is a numpy.lib.npyio.NpzFile
+    file_path = "../weight/mnist.npz"   ## "D:\source_file\AI\CIM\swsim\mnist.npz" # This is a numpy.lib.npyio.NpzFile
     fp = np.load(file_path, allow_pickle=True)
     image_list, targets = fp['x_test'], fp['y_test']
     fp.close()
@@ -265,7 +265,7 @@ def cim_load_weight(din,mem=[]):
                         for k in range(och): # number of output channels
                             vec[x*8+k] = din[k][0][r][x]
                     mem.append(vec)
-    elif shape[1]<=4:# example of din shape (9,3,5,5)
+    elif shape[1]<=1:# example of din shape (9,3,5,5)
         dtran = np.transpose(din,(2,0,3,1))
         dresh = dtran.reshape((shape[2],shape[0]*shape[3],shape[1]))    
         pcs = int(8/shape[1]) # one logic address can store 2 or 4 rows
@@ -289,25 +289,26 @@ def cim_load_weight(din,mem=[]):
             mem.append(row)
             #print(row)
         
-    elif shape[1]<=64: # example of din shape (16,8,5,5) 
+    elif shape[1]<=16: # example of din shape (16,8,5,5) 
         dtran = np.transpose(din,(2,0,3,1))
         dresh = dtran.reshape((shape[2],shape[0]*shape[3],shape[1]))
-        vseg = 1 if shape[1]>32 else (2 if shape[1]>16 else (4 if shape[1]>8 else 8)) 
+        vseg = 1 if shape[1]>8 else (2 if shape[1]>4 else (4 if shape[1]>2 else 8)) 
         slen = int(64/vseg) # length of each vector segment
         krow = math.ceil(shape[0]*slen*shape[3]/64) # number of vec64 needed for one kernel row
         #assert len(mem)+krow*shape[2]<256, "Current memory can't fit all weight data!"
         for r in range(shape[2]): # number of kernel rows
             for p in range(krow): # number of vec64 needed for one kernel row*och
-                vec = np.zeros((64,),dtype=np.float32)
+                vec = np.zeros((16,),dtype=np.float32)
                 for s in range(vseg): # number of logic address per vec64
                     kx = p*vseg + s # index of current kernel data 
                     pcs = (p*vseg+s)*slen # start address of current vector segment in reshaped weights
-                    vec[s*slen:s*slen+shape[1]] = dresh[r][kx]
+                    vec[s*slen:s*slen+shape[1]] = dresh[r][kx]                    
+                    print(vec)
                 mem.append(vec)
                 
     else: # shape[1]>64
         VSEG = 8 # number of segment/address in one vec64 
-        UNIT = 8 # number of bytes in one logic address
+        UNIT = 8/4 # number of bytes in one logic address
         plen = math.ceil(shape[1]/UNIT) # number of logic address for one kernel data
         krow = math.ceil(shape[0]*shape[3]*plen/VSEG) # number of vec64 needed for kernel_row*channel
         vecm = np.zeros((shape[2]*krow,64),dtype=np.float32) # vector memory 
@@ -350,7 +351,7 @@ def cim_load_fmap(din,ws):
                         vec[s*slen+r] = din[0][g*8+r][p*vseg+s]
                 mem.append(vec)
                 #print(vec)
-    elif shape[0]<=4: # channels are 2~4
+    elif shape[0]<=1: # channels are 2~4
         pcs = int(8/shape[0]) # one logic address can store 2 or 4 rows
         rowgrp = math.ceil(shape[1]/pcs) # row numbers after group
         nvec = math.ceil(shape[2]/8) # number of vec64 needed for one feature map row
@@ -365,8 +366,8 @@ def cim_load_fmap(din,ws):
                         for c in range(shape[0]):
                             vec[s*8+int(r*vseg/pcs)+c] = din[c][g*pcs+r][p*vseg+s]
                 mem.append(vec)
-    elif shape[0]<=64: # channels are 5~64
-        vseg = 1 if shape[0]>32 else (2 if shape[0]>16 else (4 if shape[0]>8 else 8))  # number of seg per vec64 
+    elif shape[0]<=16: # channels are 5~64
+        vseg = 1 if shape[0]>8 else (2 if shape[0]>4 else (4 if shape[0]>2 else 8))  # number of seg per vec64 
         slen = int(64/vseg) # length of each vector segment, segment length 
         nvec = math.ceil(shape[2]/vseg) # number of vec64 needed for one feature map row
         #assert shape[1]*nvec<256, "Current memory can't fit all feature map data!"
@@ -375,7 +376,7 @@ def cim_load_fmap(din,ws):
         #for i in range(5): print(dtran[i][0:5])
         for r in range(shape[1]):
             for p in range(nvec):
-                vec = np.zeros((64,),dtype=np.float32)
+                vec = np.zeros((16,),dtype=np.float32)
                 for s in range(vseg):
                     if p*vseg+s>=shape[2]: continue
                     vec[s*slen:s*slen+shape[0]] = dtran[r][p*vseg+s]
@@ -435,10 +436,10 @@ def cim_conv2d(mem0,ws0,mem1,ws1,stride=1,offset=0):
     output = np.zeros((ws1[0],s1,s2),dtype=np.float32)
     
     UNIT = 8 # number of bytes in one logic address
-    unit = UNIT
+    unit = UNIT//4
     VSEG = 8 # number of logic address in one vector
 
-    if shape[0]<=4: 
+    if shape[0]<=1: 
         USEG = int(UNIT/shape[0]) # number of data rows in one address; or number of kernel channel in one address
         ULEN = math.ceil(UNIT/USEG) # length of one piece of data
         OHGRP = math.ceil(ws1[0]/USEG) # grouped output channel numbers  
@@ -495,15 +496,15 @@ def cim_conv2d(mem0,ws0,mem1,ws1,stride=1,offset=0):
                                 output[khcnt][fr][fx] = mult_2d.sum()+init 
                                 # if khcnt==0 and kg==0 and fr==0 and fx==0: print(kr,fr,fx,kaddr,"\n",fdata,"\n",kernel)
 
-    elif shape[0]<=64:
-        ULEN = 64 if shape[0]>32 else (32 if shape[0]>16 else (16 if shape[0]>8 else 8))  # length of one piece of data
+    elif shape[0]<=16:
+        ULEN = 64 if shape[0]>8 else (32 if shape[0]>4 else (16 if shape[0]>2 else 8))  # length of one piece of data
         KVCNT = math.ceil(ULEN*ws1[3]/64) #math.ceil(ws1[1]*ws1[3]/64) # number of vec64 for one_kernel_row 
         KRLEN = math.ceil(ws1[0]*ULEN*ws1[3]/UNIT) # number of address for (one_kernel_row * output_channel) 
         KALEN = math.ceil(ULEN*ws1[3]/UNIT) # logic address length of one_kernel_row
         KLAST = VSEG if KALEN%VSEG==0 else KALEN%VSEG # logic address for last segment of kernel row
-        RVCNT = math.ceil(ws0[2]*ULEN/64) # number of vec64 for one feature map row
-        print("RC,RS,HC,HS,VC,VS:",ws1[3],KRLEN,ws1[0],KALEN,KVCNT,VSEG,ws0,ws1)
-        print("YC,YS,XC,XS:",int((ws0[1]-ws1[2]+1)/stride),RVCNT*VSEG*stride,int((ws0[2]-ws1[3]+1)/stride),int(ULEN/VSEG))
+        RVCNT = math.ceil(ws0[2]*ULEN/64) # number of vec64 for one feature map row       
+        print("RC,RS,HC,HS,VC,VS,FM,Kernal,KLAST:",ws1[2],KRLEN,ws1[0],KALEN,KVCNT,VSEG,ws0,ws1,KLAST)             
+        print("YC,YS,XC,XS,VC,s1*s2:",int((ws0[1]-ws1[2]+1)/stride),RVCNT*VSEG*stride,int((ws0[2]-ws1[3]+1)/stride),int(ULEN/VSEG),KVCNT,s1*s2)
         for kr in range(ws1[2]):
             for kh in range(ws1[0]):
                 khcnt=kh
@@ -528,7 +529,8 @@ def cim_conv2d(mem0,ws0,mem1,ws1,stride=1,offset=0):
                         array_to_hex_string(kernel.tolist())                    
                     for fr in range(0,ws0[1]-ws1[2]+1,stride):
                         frcnt=fr+kr
-                        faddr_offset = frcnt*RVCNT*VSEG + kvcnt*VSEG  
+                        faddr_offset = frcnt*RVCNT*VSEG + kvcnt*VSEG
+                        #print("kr,kh,kv,fr,frcnt,kvcnt,kaddr,faddr_offset:",kr,kh,kv,fr,frcnt,kvcnt,kaddr,faddr_offset)  
                         for fx in range(0,ws0[2]-ws1[3]+1,stride):
                             fxcnt=fx
                             faddr=faddr_offset+int(fxcnt*ULEN/VSEG)
@@ -544,6 +546,12 @@ def cim_conv2d(mem0,ws0,mem1,ws1,stride=1,offset=0):
                                 fdata[(8-fstar)*unit:adnum*unit] = mem0[frow1][0:(adnum+fstar-8)*unit]
                             mult_2d=kernel*fdata                          
                             output[kh][fr][fx] = mult_2d.sum()+init
+                            print("kr,kh,kv,fr,fx,frcnt,kvcnt,kaddr,faddr_offset:",kr,kh,kv,fr,fx,frcnt,kvcnt,kaddr,faddr_offset)  
+                            print("faddr,frow0,frow1,init:",faddr,frow0,frow1,init)
+                            print("kernel",kernel)
+                            print("mult_2d",mult_2d)
+                            print("fdata",fdata)
+                            print("out",output)
                             #if kh==0 and fr==0 and fx==0: print(kr,kv,"--",fr,fx,adnum,"\n",kernel,"\n",fdata)
                             adro = kh*(ws0[1]-ws1[2]+1)*(ws0[2]-ws1[3]+1)+fr*(ws0[2]-ws1[3]+1)+fx
                             if((kr<2 and kh<2) or (kr==ws1[3]-1 and kh==ws1[0]-1)): 
@@ -643,10 +651,12 @@ def run_conv2d_sim_2(W1,W2,offset=20*8):
     #    print("\n",ref[0])
     with open("./mem_data.txt", 'w') as file_data_store:
         M0 = cim_load_weight(W2,[])
-        test = np.arange(2592,dtype=np.float32).reshape((8,18,18)) % 11
-        ch = test[1].reshape((1,18,18))
+        test = np.arange(392,dtype=np.float32).reshape((8,7,7)) % 11
+        ch = test[1].reshape((1,7,7))
+        #test = np.arange(252,dtype=np.float32).reshape((7,6,6)) % 5
+        #ch = test[1].reshape((1,6,6))
         fm2 = np.concatenate((test,ch),axis=0)
-        M2 = cim_load_fmap(fm2,W2.shape)  
+        M2 = cim_load_fmap(fm2,W2.shape)          
         print("--weight")
         file_data_store.write("--weight\n")
         partial_weight = ""
@@ -671,15 +681,17 @@ def run_conv2d_sim_2(W1,W2,offset=20*8):
     out = cim_conv2d(M2,fm2.shape,M0,W2.shape)
     ref = conv2d_layer(fm2,W2)
     #print(out)
-    if np.array_equal(ref,out): 
+    if np.allclose(ref,out,atol=1e-08):  
         print("---> Run_conv2d_sim_2 passed")
     else:
         print("---> Run_conv2d_sim_2 failed")
         print("\n",out[0])
         print("\n",ref[0])  
-    #print_mem_hex(M0)
-    #print("\n")
-    #print_mem_hex(M2)
+
+        
+    for item in out:
+        print(item,end='')
+    print()
 
 
 # Hardware conv2d simulatin: fmap channel>64, W~(4,90,10,10), Fm~(90,18,18)
@@ -716,6 +728,8 @@ def cim_conv2d_test(W1,W2):
     Wx1 = np.concatenate((Wx,Wx,Wx),axis=1)
     ch = W2[0:2].reshape(16,1,5,5)
     Wx2 = np.concatenate((W2,ch),axis=1)
+    Wx2d = W2[8:,0:,0:,0:]
+
     print("\nCNN channel extend to 3 and 9:")
     #run_conv2d_sim_2(Wx1,Wx2)
 
@@ -728,7 +742,8 @@ def cim_conv2d_test(W1,W2):
     ch = np.zeros((16,9,5,10),dtype=np.float32)
     Wx4 = np.concatenate((Wx4,ch),axis=2)
     print("\nKernel size extend to 10x10:")
-    run_conv2d_sim_2(Wx3,Wx4,offset=70*8)
+    run_conv2d_sim_2(Wx3,Wx2d,offset=70*8)
+    # run_conv2d_sim_2(Wx3,Wx2,offset=70*8)
 
     #for i in range(9): print(Wx4[0][i])
     ch = Wx4[0:4]
@@ -781,219 +796,249 @@ Below subroutines demostrate matrix mult A·B
 If use GNN mode, each 64/16 rows of B matrix is compressed into 64/16 bits of mask to calcuate vector adder 
 '''
 
-def cim_matrix_load(d1,d2,data_bit):
-    assert d1.ndim==2 and d2.ndim==2
-    assert d1.shape[1]==d2.shape[0]
-    shape = d1.shape
-    data_byte = int(data_bit/8)
-    UNIT=8 # bytes in one logic address 
-    VSEG=8 # number of logic address in one vec64 
-    dtran = np.transpose(d2,(1,0))
-    if shape[1]<=4:
-        GLEN = int(UNIT/shape[1]) # number of group data in one logic address
-        CLEN = 1 # number of address for one column of data
-        CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
-        VCNT = 1 # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*shape[0]/VSEG/GLEN) # total number of vec64 for whole matrix
-        RCNT = math.ceil(shape[0]/GLEN) # number of row after grouped
-        mem0 = np.zeros((VALL,64),dtype=np.float32)
-        mem1 = np.zeros((VALL,64),dtype=np.float32)
-        for r in range(RCNT):
-            for g in range(GLEN):
-                rg = r*GLEN+g
-                if rg>shape[0]-1: continue
-                adr = r
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                seg = shape[1]
-                mem0[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = d1[rg]
-                mem1[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = dtran[rg]   
-    else:
-        CLEN = math.ceil(shape[1]*data_byte/UNIT) # number of address for one column of data
-        VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*shape[0]/VSEG) # total number of vec64 for whole matrix
-        VLD2 = math.ceil(CLEN*d2.shape[1]/VSEG) # total number of vec64 for d2
-        mem0 = np.zeros((VALL,int(64/data_byte)),dtype=np.float32)
-        mem1 = np.zeros((VLD2,int(64/data_byte)),dtype=np.float32)
-        for r in range(shape[0]):
-            for v in range(VCNT):
-                adr = r*CLEN + v*VSEG
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                if shape[1]*data_byte <= UNIT:
-                    seg = shape[1]
-                    mem0[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = d1[r]
-                elif shape[1]*data_byte <=UNIT*VSEG:
-                    seg = shape[1]
-                    row1 = int((adr+CLEN-1)/VSEG)
-                    if row==row1:
-                        mem0[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = d1[r]
-                    else:
-                        mem0[row][ofs*UNIT//data_byte:VSEG*UNIT//data_byte] = d1[r][0:(VSEG-ofs)*UNIT//data_byte]
-                        mem0[row1][0:seg-(VSEG-ofs)*UNIT//data_byte] = d1[r][(VSEG-ofs)*UNIT//data_byte:seg]
-                else:
-                    lst = (shape[1]*data_byte)%(VSEG*UNIT) if (shape[1]*data_byte)%(VSEG*UNIT)>0 else VSEG*UNIT
-                    seg = int(lst/data_byte) if v==VCNT-1 else int(VSEG*UNIT/data_byte)
-                    ads = int(seg/(UNIT/data_byte))-1 if int(seg/(UNIT/data_byte))>1 else 0
-                    row1 = int((adr+ads)/VSEG)
-                    #print(r,v,adr,ofs,row,row1,seg)
-                    if row==row1:
-                        #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row ==row1")
-                        mem0[row][int(ofs*(UNIT/data_byte)):int(ofs*(UNIT/data_byte))+seg] = d1[r][int(v*64/data_byte):int(v*64/data_byte)+seg]
-                    else:
-                        #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row !=row1")
-                        mem0[row][int(ofs*(UNIT/data_byte)):int(VSEG*UNIT/data_byte)] = d1[r][int(v*64/data_byte):int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte)]
-                        mem0[row1][0:int(seg-((VSEG-ofs)*UNIT/data_byte))] = d1[r][int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte):int(v*64/data_byte)+seg]
+def trans_matrix_to_vector(UNIT, VSEG, d):
+    a, b = d.shape
+    VECTOR = UNIT * VSEG
+    pad_addr = (UNIT - (b % UNIT)) % UNIT
+    padded_zero = np.zeros((a, pad_addr), dtype=np.int32)
+    d_pad1 = np.concatenate((d, padded_zero), axis=1)  #把(a, b)矩阵补零到(a, b + pad_addr), b+pad_addr是UNIT(一个地址包含的bit数)的倍数
+    pad_vec = (VECTOR - (d_pad1.size % VECTOR)) % VECTOR
+    temp1 = d_pad1.ravel()
+    d_pad2 = np.pad(temp1, (0, pad_vec), mode='constant', constant_values=0)
+    mem = d_pad2.reshape(-1, VECTOR)  #把(a, b + pad_addr)矩阵reshape成(n, VECTOR)矩阵, 即占用n个vec64
+    return mem
+
+def cim_matrix_load(d1, d2):
+    assert d1.ndim == 2 and d2.ndim == 2
+    assert d1.shape[1] == d2.shape[0]
+    UNIT = 2  # data in one logic address, 1 address contains 2 fp32 data, or 8 int8 data
+    VSEG = 8  # number of logic address in one vec64
+    mem0 = trans_matrix_to_vector(UNIT, VSEG,d1)
+    dtran = np.transpose(d2, (1, 0))
+    mem1 = trans_matrix_to_vector(UNIT, VSEG,dtran)
+    return mem0, mem1
+
+# def cim_matrix_load(d1,d2,data_bit=32):
+#     assert d1.ndim==2 and d2.ndim==2
+#     assert d1.shape[1]==d2.shape[0]
+#     shape = d1.shape
+#     data_byte = int(data_bit/8)
+#     UNIT=8 # bytes in one logic address 
+#     VSEG=8 # number of logic address in one vec64 
+#     dtran = np.transpose(d2,(1,0))
+#     if shape[1]<=4:
+#         GLEN = int(UNIT/shape[1]) # number of group data in one logic address
+#         CLEN = 1 # number of address for one column of data
+#         CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
+#         VCNT = 1 # number of vec64 need for one column of data
+#         VALL = math.ceil(CLEN*shape[0]/VSEG/GLEN) # total number of vec64 for whole matrix
+#         RCNT = math.ceil(shape[0]/GLEN) # number of row after grouped
+#         mem0 = np.zeros((VALL,64),dtype=np.float32)
+#         mem1 = np.zeros((VALL,64),dtype=np.float32)
+#         for r in range(RCNT):
+#             for g in range(GLEN):
+#                 rg = r*GLEN+g
+#                 if rg>shape[0]-1: continue
+#                 adr = r
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 seg = shape[1]
+#                 mem0[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = d1[rg]
+#                 mem1[row][ofs*UNIT+g*CSEG:ofs*UNIT+g*CSEG+seg] = dtran[rg]   
+#     else:
+#         CLEN = math.ceil(shape[1]*data_byte/UNIT) # number of address for one column of data
+#         VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
+#         VALL = math.ceil(CLEN*shape[0]/VSEG) # total number of vec64 for whole matrix
+#         VLD2 = math.ceil(CLEN*d2.shape[1]/VSEG) # total number of vec64 for d2
+#         mem0 = np.zeros((VALL,int(64/data_byte)),dtype=np.float32)
+#         mem1 = np.zeros((VLD2,int(64/data_byte)),dtype=np.float32)
+#         for r in range(shape[0]):
+#             for v in range(VCNT):
+#                 adr = r*CLEN + v*VSEG
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 if shape[1]*data_byte <= UNIT:
+#                     seg = shape[1]
+#                     mem0[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = d1[r]
+#                 elif shape[1]*data_byte <=UNIT*VSEG:
+#                     seg = shape[1]
+#                     row1 = int((adr+CLEN-1)/VSEG)
+#                     if row==row1:
+#                         mem0[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = d1[r]
+#                     else:
+#                         mem0[row][ofs*UNIT//data_byte:VSEG*UNIT//data_byte] = d1[r][0:(VSEG-ofs)*UNIT//data_byte]
+#                         mem0[row1][0:seg-(VSEG-ofs)*UNIT//data_byte] = d1[r][(VSEG-ofs)*UNIT//data_byte:seg]
+#                 else:
+#                     lst = (shape[1]*data_byte)%(VSEG*UNIT) if (shape[1]*data_byte)%(VSEG*UNIT)>0 else VSEG*UNIT
+#                     seg = int(lst/data_byte) if v==VCNT-1 else int(VSEG*UNIT/data_byte)
+#                     ads = int(seg/(UNIT/data_byte))-1 if int(seg/(UNIT/data_byte))>1 else 0
+#                     row1 = int((adr+ads)/VSEG)
+#                     #print(r,v,adr,ofs,row,row1,seg)
+#                     if row==row1:
+#                         #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row ==row1")
+#                         mem0[row][int(ofs*(UNIT/data_byte)):int(ofs*(UNIT/data_byte))+seg] = d1[r][int(v*64/data_byte):int(v*64/data_byte)+seg]
+#                     else:
+#                         #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row !=row1")
+#                         mem0[row][int(ofs*(UNIT/data_byte)):int(VSEG*UNIT/data_byte)] = d1[r][int(v*64/data_byte):int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte)]
+#                         mem0[row1][0:int(seg-((VSEG-ofs)*UNIT/data_byte))] = d1[r][int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte):int(v*64/data_byte)+seg]
                         
-        for r in range(d2.shape[1]):
-            for v in range(VCNT):
-                adr = r*CLEN + v*VSEG
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                if shape[1]*data_byte <= UNIT:
-                    seg = shape[1]
-                    mem1[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = dtran[r]
-                elif shape[1]*data_byte <=UNIT*VSEG:
-                    seg = shape[1]
-                    row1 = int((adr+CLEN-1)/VSEG)
-                    if row==row1:
-                        mem1[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = dtran[r]
-                    else:
-                        mem1[row][ofs*UNIT//data_byte:VSEG*UNIT//data_byte] = dtran[r][0:(VSEG-ofs)*UNIT//data_byte]
-                        mem1[row1][0:seg-(VSEG-ofs)*UNIT//data_byte] = dtran[r][(VSEG-ofs)*UNIT//data_byte:seg]
-                else:
-                    lst = (shape[1]*data_byte)%(VSEG*UNIT) if (shape[1]*data_byte)%(VSEG*UNIT)>0 else VSEG*UNIT
-                    seg = int(lst/data_byte) if v==VCNT-1 else int(VSEG*UNIT/data_byte)
-                    ads = int(seg/(UNIT/data_byte))-1 if int(seg/(UNIT/data_byte))>1 else 0
-                    row1 = int((adr+ads)/VSEG)
-                    #print(r,v,adr,ofs,row,row1,seg)
-                    if row==row1:
-                        #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row ==row1")
-                        if row<VLD2 and r<d2.shape[1]: mem1[row][int(ofs*(UNIT/data_byte)):int(ofs*(UNIT/data_byte))+seg] = dtran[r][int(v*64/data_byte):int(v*64/data_byte)+seg]
-                    else:
-                        #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row !=row1")
-                        if row<VLD2 and r<d2.shape[1]: mem1[row][int(ofs*(UNIT/data_byte)):int(VSEG*UNIT/data_byte)] = dtran[r][int(v*64/data_byte):int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte)]
-                        if row1<VLD2 and r<d2.shape[1]: mem1[row1][0:int(seg-((VSEG-ofs)*UNIT/data_byte))] = dtran[r][int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte):int(v*64/data_byte)+seg]  
-    return mem0,mem1
+#         for r in range(d2.shape[1]):
+#             for v in range(VCNT):
+#                 adr = r*CLEN + v*VSEG
+#                 row = int(adr/VSEG)
+#                 ofs = adr%VSEG
+#                 if shape[1]*data_byte <= UNIT:
+#                     seg = shape[1]
+#                     mem1[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = dtran[r]
+#                 elif shape[1]*data_byte <=UNIT*VSEG:
+#                     seg = shape[1]
+#                     row1 = int((adr+CLEN-1)/VSEG)
+#                     if row==row1:
+#                         mem1[row][ofs*UNIT//data_byte:ofs*UNIT//data_byte+seg] = dtran[r]
+#                     else:
+#                         mem1[row][ofs*UNIT//data_byte:VSEG*UNIT//data_byte] = dtran[r][0:(VSEG-ofs)*UNIT//data_byte]
+#                         mem1[row1][0:seg-(VSEG-ofs)*UNIT//data_byte] = dtran[r][(VSEG-ofs)*UNIT//data_byte:seg]
+#                 else:
+#                     lst = (shape[1]*data_byte)%(VSEG*UNIT) if (shape[1]*data_byte)%(VSEG*UNIT)>0 else VSEG*UNIT
+#                     seg = int(lst/data_byte) if v==VCNT-1 else int(VSEG*UNIT/data_byte)
+#                     ads = int(seg/(UNIT/data_byte))-1 if int(seg/(UNIT/data_byte))>1 else 0
+#                     row1 = int((adr+ads)/VSEG)
+#                     #print(r,v,adr,ofs,row,row1,seg)
+#                     if row==row1:
+#                         #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row ==row1")
+#                         if row<VLD2 and r<d2.shape[1]: mem1[row][int(ofs*(UNIT/data_byte)):int(ofs*(UNIT/data_byte))+seg] = dtran[r][int(v*64/data_byte):int(v*64/data_byte)+seg]
+#                     else:
+#                         #print(row,r,v,ofs,seg,len(mem0[row]),len(d1[r]),"row !=row1")
+#                         if row<VLD2 and r<d2.shape[1]: mem1[row][int(ofs*(UNIT/data_byte)):int(VSEG*UNIT/data_byte)] = dtran[r][int(v*64/data_byte):int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte)]
+#                         if row1<VLD2 and r<d2.shape[1]: mem1[row1][0:int(seg-((VSEG-ofs)*UNIT/data_byte))] = dtran[r][int(v*64/data_byte)+int((VSEG-ofs)*UNIT/data_byte):int(v*64/data_byte)+seg]  
+#     return mem0,mem1
 
 def cim_matrix_mult_sim(M0,M1,S0,S1,data_bit,inst_row):
     data_byte = int(data_bit/8)
-    UNIT=int(8/data_byte) # bytes in one logic address 
+    UNIT=int(8/data_byte) # data in one logic address 
     VSEG=8 # number of logic address in one vec64
-    weight_list = ""
-    vec_list = ""
-    vec_list_mem = ""
-    sup_zero = ""
-    if S0[1]<=4:
-        GLEN = int(UNIT/S0[1]) # number of group data in one logic address
-        CLEN = 1 # number of address for one column of data
-        CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
-        VCNT = 1 # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*S0[0]/VSEG/GLEN) # total number of vec64 for whole matrix
-        RCNT = math.ceil(S0[0]/GLEN) # number of row after grouped
-        vmem = np.zeros((S0[0],S1[1]),dtype=np.float32) 
-        for r in range(S0[0]):
+    # weight_list = ""
+    # vec_list = ""
+    # vec_list_mem = ""
+    # sup_zero = ""
+    # if S0[1]<=4:
+    #     GLEN = int(UNIT/S0[1]) # number of group data in one logic address
+    #     CLEN = 1 # number of address for one column of data
+    #     CSEG = int(UNIT/GLEN) # number of bytes needed for memory store one column of data
+    #     VCNT = 1 # number of vec64 need for one column of data
+    #     VALL = math.ceil(CLEN*S0[0]/VSEG/GLEN) # total number of vec64 for whole matrix
+    #     RCNT = math.ceil(S0[0]/GLEN) # number of row after grouped
+    #     vmem = np.zeros((S0[0],S1[1]),dtype=np.float32) 
+    #     for r in range(S0[0]):
+    #         for c in range(S1[1]):
+    #             # M0 memory access 
+    #             adr = int(r/GLEN)
+    #             grp = r%GLEN
+    #             row = int(adr/VSEG)
+    #             ofs = adr%VSEG
+    #             seg = S0[1]
+    #             vec0 = M0[row][ofs*UNIT+grp*CSEG:ofs*UNIT+grp*CSEG+seg]
+    #             # M1 memory access 
+    #             adr = int(c/GLEN)
+    #             grp = c%GLEN
+    #             row = int(adr/VSEG)
+    #             ofs = adr%VSEG                
+    #             vec1 = M1[row][ofs*UNIT+grp*CSEG:ofs*UNIT+grp*CSEG+seg]
+    #             #print(r,c,grp,row,ofs,vec0,vec1)
+    #             vmem[r][c] = (vec0*vec1).sum()
+    # else:
+    CLEN = math.ceil(S0[1]/UNIT) # number of address for one column of data
+    VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
+    VALL = math.ceil(CLEN*S0[0]/VSEG) # total number of vec64 for whole matrix 
+    vmem = np.zeros((S0[0],S1[1]),dtype=np.float32) 
+    lst = CLEN%VSEG if CLEN%VSEG>0 else VSEG  # number of address for last segment
+    # print("Constant R,V,X,Last:",S0[0],VCNT,S1[1],lst)
+    # print("Constant RS,VS,XS:",CLEN,VSEG,CLEN)
+    for r in range(S0[0]):
+        for v in range(VCNT):
+            seg = lst*UNIT if v==VCNT-1 else VSEG*UNIT # number of address for current segment
+            adr0 = r*CLEN+v*VSEG
+            row0 = int(adr0/VSEG)
+            ads = int(seg/UNIT)-1 if int(seg/UNIT)>1 else 0
+            row1 = int((adr0+CLEN-1)/VSEG) if VCNT==1 else int((adr0+ads)/VSEG)
+            ofs = adr0%VSEG
+            if row0==row1:
+                vec0 = M0[row0][ofs*UNIT:ofs*UNIT+seg]
+            else:
+                vec0 = np.zeros((seg,),dtype=np.float32)
+                vec0[0:(VSEG-ofs)*UNIT] = M0[row0][ofs*UNIT:VSEG*UNIT]
+                vec0[(VSEG-ofs)*UNIT:seg] = M0[row1][0:(ofs-VSEG)*UNIT+seg]
+            #print("\nWeigh------------")
+            # weight_list = weight_list + array_to_hex_string(vec0.tolist())
             for c in range(S1[1]):
-                # M0 memory access 
-                adr = int(r/GLEN)
-                grp = r%GLEN
-                row = int(adr/VSEG)
-                ofs = adr%VSEG
-                seg = S0[1]
-                vec0 = M0[row][ofs*UNIT+grp*CSEG:ofs*UNIT+grp*CSEG+seg]
-                # M1 memory access 
-                adr = int(c/GLEN)
-                grp = c%GLEN
-                row = int(adr/VSEG)
-                ofs = adr%VSEG                
-                vec1 = M1[row][ofs*UNIT+grp*CSEG:ofs*UNIT+grp*CSEG+seg]
-                #print(r,c,grp,row,ofs,vec0,vec1)
-                vmem[r][c] = (vec0*vec1).sum()
-    else:
-        CLEN = math.ceil(S0[1]/UNIT) # number of address for one column of data
-        VCNT = math.ceil(CLEN/VSEG) # number of vec64 need for one column of data
-        VALL = math.ceil(CLEN*S0[0]/VSEG) # total number of vec64 for whole matrix 
-        vmem = np.zeros((S0[0],S1[1]),dtype=np.float32) 
-        lst = CLEN%VSEG if CLEN%VSEG>0 else VSEG  # number of address for last segment
-        print("Constant R,V,X,Last:",S0[0],VCNT,S1[1],lst)
-        print("Constant RS,VS,XS:",CLEN,VSEG,CLEN)
-        for r in range(S0[0]):
-            for v in range(VCNT):               
-                seg = lst*UNIT if v==VCNT-1 else VSEG*UNIT # number of address for current segment
-                adr0 = r*CLEN+v*VSEG
-                row0 = int(adr0/VSEG)
-                ads = int(seg/UNIT)-1 if int(seg/UNIT)>1 else 0
-                row1 = int((adr0+CLEN-1)/VSEG) if VCNT==1 else int((adr0+ads)/VSEG)
-                ofs = adr0%VSEG
+                init = 0 if v==0 else vmem[r][c]
+                adr1 = c*CLEN+v*VSEG
+                row0 = int(adr1/VSEG)
+                row1 = int((adr1+CLEN-1)/VSEG) if VCNT==1 else int((adr1+ads)/VSEG)
+                ofs = adr1%VSEG
                 if row0==row1:
-                    vec0 = M0[row0][ofs*UNIT:ofs*UNIT+seg]
+                    vec1 = M1[row0][ofs*UNIT:ofs*UNIT+seg]
                 else:
-                    vec0 = np.zeros((seg,),dtype=np.float32)
-                    vec0[0:(VSEG-ofs)*UNIT] = M0[row0][ofs*UNIT:VSEG*UNIT]
-                    vec0[(VSEG-ofs)*UNIT:seg] = M0[row1][0:(ofs-VSEG)*UNIT+seg]
-                
-                #print("\nWeigh------------")
-                weight_list = weight_list + array_to_hex_string(vec0.tolist())
-                for c in range(S1[1]):
-                    init = 0 if v==0 else vmem[r][c] 
-                    adr1 = c*CLEN+v*VSEG
-                    row0 = int(adr1/VSEG)
-                    row1 = int((adr1+CLEN-1)/VSEG) if VCNT==1 else int((adr1+ads)/VSEG)
-                    ofs = adr1%VSEG
-                    if row0==row1:
-                        vec1 = M1[row0][ofs*UNIT:ofs*UNIT+seg]
-                    else:
-                        vec1 = np.zeros((seg,),dtype=np.float32)
-                        vec1[0:(VSEG-ofs)*UNIT] = M1[row0][ofs*UNIT:VSEG*UNIT]
-                        vec1[(VSEG-ofs)*UNIT:seg] = M1[row1][0:(ofs-VSEG)*UNIT+seg]
-                    #print(row0,row1,M1[row0][ofs*UNIT:ofs*UNIT+seg],M1[row0][ofs*UNIT:VSEG*UNIT],M1[row1][0:(ofs-VSEG)*UNIT+seg])
-                    vmem[r][c] = (vec0*vec1).sum() + init
-                    vec_list = vec_list +  array_to_hex_string(vec1.tolist())
-                    print("Len,Init,OADR,ADRW,ADRV:",seg,v!=0,r*S1[1]+c,adr0+16,adr1+32,(vec0*vec1).sum())
-        inst_adr = math.ceil(inst_row*2/64)*8
-        w_adr = math.ceil((len(weight_list)/32)*2/8)*8
-        vec_offset = hex(inst_adr + w_adr)[2:]
-        print("VEC PTR value: " + str(vec_offset))
-        print("weight row(128bit): " + str(len(weight_list)/32))
-        print("weight row complement row(128bit): " + str((math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2)))
-        print("Total: " + str(len(weight_list)/32 + (math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2)))
-        print("weight list")
-        for i in range(len(weight_list)//32):
-            line_weight = ""
-            for j in range(32):
-                line_weight = line_weight + weight_list[i*32+j]
-            print(line_weight)
-        for i in range(int((math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2))):
-            sup_zero = ""
-            for j in range(32):
-                sup_zero = sup_zero + "0"
-            print(sup_zero)
-        print("vec_list")
-        vec_mem_row = M1.shape[0]
-        vec_mem_col = M1.shape[1]
-        vec_length = 0
-        for i in range (vec_mem_row):
-            for j in range (vec_mem_col):
-                if ((j+1)%4 == 0):
-                    vec_list_mem = vec_list_mem + float_to_hex(M1[i][j])[2:] + "\n"
-                    vec_length = vec_length + 1
-                else:
-                    vec_list_mem = vec_list_mem + float_to_hex(M1[i][j])[2:]
-        print(vec_list_mem[:-1])
-        for i in range(int(math.ceil(vec_length*128/8/64)*4-vec_length)):
-            sup_zero = ""
-            for j in range(32):
-                sup_zero = sup_zero + "0"
-            print(sup_zero)
-        print("write_cycle = " + str(((math.ceil(len(weight_list)/32*2/8)*8)/2 + math.ceil(vec_length*128/8/64)*4)/4) + "-1")
-        print("read_cycle = " + str(math.ceil(S0[0]*S1[1]/4)))
+                    vec1 = np.zeros((seg,),dtype=np.float32)
+                    vec1[0:(VSEG-ofs)*UNIT] = M1[row0][ofs*UNIT:VSEG*UNIT]
+                    vec1[(VSEG-ofs)*UNIT:seg] = M1[row1][0:(ofs-VSEG)*UNIT+seg]
+                #print(row0,row1,M1[row0][ofs*UNIT:ofs*UNIT+seg],M1[row0][ofs*UNIT:VSEG*UNIT],M1[row1][0:(ofs-VSEG)*UNIT+seg])
+                vmem[r][c] = (vec0*vec1).sum() + init
+                # vec_list = vec_list +  array_to_hex_string(vec1.tolist())
+                # print("Len,Init,OADR,ADRW,ADRV:",seg,v!=0,r*S1[1]+c,adr0+16,adr1+32,(vec0*vec1).sum())
+        # inst_adr = math.ceil(inst_row*2/64)*8
+        # w_adr = math.ceil((len(weight_list)/32)*2/8)*8
+        # vec_offset = hex(inst_adr + w_adr)[2:]
+        # print("VEC PTR value: " + str(vec_offset))
+        # print("weight row(128bit): " + str(len(weight_list)/32))
+        # print("weight row complement row(128bit): " + str((math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2)))
+        # print("Total: " + str(len(weight_list)/32 + (math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2)))
+        # print("weight list")
+        # for i in range(len(weight_list)//32):
+        #     line_weight = ""
+        #     for j in range(32):
+        #         line_weight = line_weight + weight_list[i*32+j]
+        #     print(line_weight)
+        # for i in range(int((math.ceil(len(weight_list)/32*2/8)*8-len(weight_list)/32*2)/(2))):
+        #     sup_zero = ""
+        #     for j in range(32):
+        #         sup_zero = sup_zero + "0"
+        #     print(sup_zero)
+        # # print("vec_list")
+        # vec_mem_row = M1.shape[0]
+        # vec_mem_col = M1.shape[1]
+        # vec_length = 0
+        # for i in range (vec_mem_row):
+        #     for j in range (vec_mem_col):
+        #         if ((j+1)%4 == 0):
+        #             vec_list_mem = vec_list_mem + float_to_hex(M1[i][j])[2:] + "\n"
+        #             vec_length = vec_length + 1
+        #         else:
+        #             vec_list_mem = vec_list_mem + float_to_hex(M1[i][j])[2:]
+        # # print(vec_list_mem[:-1])
+        # for i in range(int(math.ceil(vec_length*128/8/64)*4-vec_length)):
+        #     sup_zero = ""
+        #     for j in range(32):
+        #         sup_zero = sup_zero + "0"
+        #     print(sup_zero)
+        # print("write_cycle = " + str(((math.ceil(len(weight_list)/32*2/8)*8)/2 + math.ceil(vec_length*128/8/64)*4)/4) + "-1")
+        # print("read_cycle = " + str(math.ceil(S0[0]*S1[1]/4)))
         #for i in range(len(vec_list)//(32*9)):
         #    line_vec = ""
         #    for j in range(32):
         #        line_vec = line_vec + vec_list[i*32+j]
         #    print(line_vec)
         #print(vec_list)
-    return vmem
+    temp = {
+        "R":S0[0],
+        "V":VCNT,
+        "X":S1[1],
+        "Last":lst,
+        "RS":CLEN,
+        "VS":VSEG,
+        "XS":CLEN,
+    }
+    return vmem, temp
 
 def cim_matrix_mult_test():
     data_bit = 32
@@ -1009,12 +1054,20 @@ def cim_matrix_mult_test():
 
     d1 = np.arange(60,dtype=np.float32).reshape((6,10)) % 11
     d2 = np.arange(60,dtype=np.float32).reshape((10,6)) % 13 - 6
-    
-    d1 = np.arange(200,dtype=np.float32).reshape((10,20)) % 11
-    d2 = np.arange(200,dtype=np.float32).reshape((20,10)) % 13 - 6
+    d1 = np.arange(60,dtype=np.float32).reshape((6,10))
+    d2 = np.arange(60,dtype=np.float32).reshape((10,6))
 
-    d1 = np.arange(900,dtype=np.float32).reshape((10,90)) % 11
-    d2 = np.arange(810,dtype=np.float32).reshape((90,9)) % 13 - 6
+    # d1 = np.arange(84,dtype=np.int32).reshape((7,12)) % 11            ##debug1 ok
+    # d2 = np.arange(84,dtype=np.int32).reshape((12,7)) % 13 - 6        ##debug1 ok
+    
+    #d1 = np.arange(200,dtype=np.float32).reshape((10,20)) % 11
+    #d2 = np.arange(200,dtype=np.float32).reshape((20,10)) % 13 - 6
+
+    d1 = np.arange(210,dtype=np.float32).reshape((10,21)) % 11
+    d2 = np.arange(189,dtype=np.float32).reshape((21,9)) % 13 - 6
+    # d1 = np.arange(900,dtype=np.float32).reshape((10,90)) % 11
+    # d2 = np.arange(810,dtype=np.float32).reshape((90,9)) % 13 - 6
+
     '''
     d1 = np.arange(400,dtype=np.float32).reshape((5,80)) % 11
     d2 = np.arange(480,dtype=np.float32).reshape((80,6)) % 13 - 6
@@ -1022,12 +1075,13 @@ def cim_matrix_mult_test():
     d1 = np.arange(1950,dtype=np.float32).reshape((10,195)) % 11
     d2 = np.arange(1755,dtype=np.float32).reshape((195,9)) % 13 - 6
     '''
+    # M0,M1 = cim_matrix_load(d1,d2,data_bit)
     M0,M1 = cim_matrix_load(d1,d2,data_bit)
     #print(d1)
     #print("\n")
     #print(d2)
     #print("\n")
-    out = cim_matrix_mult_sim(M0,M1,d1.shape,d2.shape,data_bit,inst_row)
+    out,_ = cim_matrix_mult_sim(M0,M1,d1.shape,d2.shape,data_bit,inst_row)
     print(out)
     ref = d1.dot(d2)
     if np.array_equal(ref,out): print("---> Cim_matrix_mult_test passed")
@@ -1116,11 +1170,12 @@ if __name__ == "__main__":
     F3 = F3 * np.ones(F3.shape,dtype=np.float32)
     B3 = B3 * np.ones(B3.shape,dtype=np.float32)
     
-    #cim_matrix_mult_test()
+    cim_matrix_mult_test()
     #cim_gnn_add_test()
-    #exit()
+    exit()
     # Test CIM conv2d functions
     cim_conv2d_test(W1,W2)
+    exit()
 
     # Run test sets and statistic correct rate
     #failure = 0

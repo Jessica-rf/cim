@@ -2,7 +2,7 @@ class InstGenerator:
 
     def __init__(self):
         self.format_4 = 1       # 1:输出指令时, 按照xxxx_xxxx_xxxx_xxxx的格式输出; 0:不进行格式化, xxxxxxxxxxxxxxxx格式输出
-        self.data_bytes = 1     # 一个数据需要的byte数, 在fp32中为4字节, int8中为1字节
+        self.data_bytes = 4     # 一个数据需要的byte数, 在fp32中为4字节, int8中为1字节
         self.vec_bytes = 64     # 一个vector中包含的byte数
 
     def formatter_4(self, input):
@@ -30,7 +30,7 @@ class InstGenerator:
         '''
         result = []
         result.append(f"1000000000000001")
-        result.append(f"0011000000000100")  # T link to R, X active mode, int8模式
+        result.append(f"0011000000000110")  # T link to R, X active mode, 浮点模式
         result.append(f"{last:04b}000101010101")
         result.append(f"1000000000001001")
         if (size > self.vec_bytes/self.data_bytes):

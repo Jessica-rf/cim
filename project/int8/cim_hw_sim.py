@@ -923,7 +923,6 @@ def cim_matrix_mult_sim(M0,M1,S0,S1):
                 vec0 = np.zeros((seg,),dtype=np.int32)
                 vec0[0:(VSEG-ofs)*UNIT] = M0[row0][ofs*UNIT:VSEG*UNIT]
                 vec0[(VSEG-ofs)*UNIT:seg] = M0[row1][0:(ofs-VSEG)*UNIT+seg]
-
             # print("\nWeigh------------")
             # array_to_hex_string(vec0.tolist())
             for c in range(S1[1]):
