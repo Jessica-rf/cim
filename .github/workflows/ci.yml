@@ -28,4 +28,10 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest  # 执行测试工具，默认查找 `tests/` 目录下的测试文件
+          pytest --capture=no > test_output.txt 
+
+      - name: Upload log as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: test_output.txt
